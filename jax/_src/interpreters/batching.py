@@ -89,6 +89,17 @@ def _jumble_flatten(jumble):
   aval = jumble.aval.replace(elt_ty=elt_ty)
   return (lengths, jumble.data), aval
 
+
+def _ragged_axis_parts(dim: RaggedAxis) -> tuple[int, int, int]:
+  stacked_axis = dim.stacked_axis
+  ragged_axes = dim.ragged_axes
+  if len(ragged_axes) != 1:
+    raise ValueError('Multiple ragged axes not yet implemented.')
+  ragged_axis_dim = ragged_axes[0][0]
+  ragged_axis_length = ragged_axes[0][1]
+  return stacked_axis, ragged_axis_dim, ragged_axis_length
+
+
 def _jumble_unflatten(aval, x):
   lengths, data = x
   new_shape = [d.replace(lengths=lengths[d.lengths - 1])
@@ -135,6 +146,25 @@ class RaggedAxis:
       return ax
     new_axes = tuple((move_axis(ax), sizes) for ax, sizes in self.ragged_axes)
     return RaggedAxis(dst, new_axes)
+
+  def __hash__(self):
+    stacked_axis = self.stacked_axis
+    ragged_axes = self.ragged_axes
+
+    ragged_axis_lengths = (r[1] for r in ragged_axes)
+    avals = []
+
+    for ral in ragged_axis_lengths:
+      if isinstance(ral, pe.DBIdx):
+        aval = ral.val
+      else:
+        aval = core.get_aval(ral).update(dtype=np.dtype('int32'))
+        if isinstance(aval, core.DShapedArray):
+          aval = core.ShapedArray(aval.shape, aval.dtype, aval.weak_type)
+      avals.append(aval)
+
+    return hash((stacked_axis, ragged_axes, tuple(avals)))
+
 
 def transpose_ragged_axes(dim: RaggedAxis, perm: tuple[int, ...]) -> RaggedAxis:
   new_ragged_axes = []
@@ -314,6 +344,45 @@ def flatten_fun_for_vmap(in_tree, *args_flat):
   py_args, py_kwargs = tree_unflatten(in_tree, args_flat)
   ans = yield py_args, py_kwargs
   yield tree_flatten(ans, is_leaf=is_vmappable)
+
+
+RaggedMaskingRule = Callable[[dict[Any, Any], list[Any], list[Any]], None]
+
+ragged_prop_rules: dict[core.Primitive, RaggedMaskingRule] = {}
+
+
+def ragged_mask_elementwise_rule(var_to_raggedness_table, invars, outvars):
+  # TODO(mvoz): A util for getting the ragged representations
+  invar_raggedness = [
+      var_to_raggedness_table[invar]
+      for invar in invars
+      if isinstance(invar, jax._src.core.Var)
+  ]
+  first_invar_raggedness = invar_raggedness[0]
+  for other_invar_raggedness in invar_raggedness[1:]:
+    assert (
+        other_invar_raggedness == first_invar_raggedness
+    ), f'{other_invar_raggedness} != {first_invar_raggedness}'
+
+  for outvar in outvars:
+    var_to_raggedness_table[outvar] = first_invar_raggedness
+
+
+def ragged_mask_no_op_rule(var_to_raggedness_table, invars, outvars):
+  for invar in invars:
+    if not invar in var_to_raggedness_table:
+      var_to_raggedness_table[invar] = None
+  for outvar in outvars:
+    if not outvar in var_to_raggedness_table:
+      var_to_raggedness_table[outvar] = None
+
+
+def ragged_mask_transfer_identity(var_to_raggedness_table, invars, outvars):
+  assert len(invars) == 1, invars
+  invar_raggedness = [var_to_raggedness_table[invar] for invar in invars][0]
+  for outvar in outvars:
+    var_to_raggedness_table[outvar] = invar_raggedness
+
 
 ### tracer
 
