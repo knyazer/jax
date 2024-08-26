@@ -402,7 +402,7 @@ try:
   os.makedirs(args.output_path, exist_ok=True)
   prepare_wheel(
       pathlib.Path(sources_path),
-      cpu=args.cpu,
+      cpu=os.uname().machine,
       skip_gpu_kernels=args.skip_gpu_kernels,
   )
   package_name = "jaxlib"

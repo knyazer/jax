@@ -296,4 +296,48 @@ def jax_generate_backend_suites(backends = []):
         tags = ["-jax_test_%s" % backend for backend in backends] + ["-manual"],
     )
 
+def _jax_wheel_impl(ctx):
+    executable = ctx.executable.wheel_binary
+
+    output = ctx.actions.declare_directory("dist")
+    args = ctx.actions.args()
+    args.add("--output_path", output.path)
+
+    if ctx.attr.enable_cuda:
+        args.add("--enable-cuda", "True")
+        args.add("--platform_version", ctx.attr.cuda_version)
+
+    # how to pass argument from command line to bazel file? run_shell or genrule? or get the value
+    # in the python script build_wheel.py or use an env variable.
+    # args.add("--cpu", "$(uname -m)")
+    args.add("--cpu", "")
+    args.add("--jaxlib_git_hash", "$(git rev-parse HEAD)")
+
+    # TODO(kanglan): address the remaining optional args
+    # --sources_path, --skip_gpu_kernels, --editable, --enable_rocm[cuda]
+
+    args.set_param_file_format("flag_per_line")
+    args.use_param_file("@%s", use_always = False)
+    ctx.actions.run(
+        arguments = [args],
+        outputs = [output],
+        executable = executable,
+    )
+    return [DefaultInfo(files = depset(direct = [output]))]
+
+jax_wheel = rule(
+    attrs = {
+        "wheel_binary": attr.label(
+            default = Label("//jaxlib/tools:build_wheel"),
+            executable = True,
+            # TODO(kanglan): needed to be configured for the execution platform as a build step.
+            # why do we need --host_copt here for exec config but --copt works when building TF?
+            cfg = "exec",
+        ),
+        "enable_cuda": attr.bool(default = False),
+        "cuda_version": attr.string(default = "12"),
+    },
+    implementation = _jax_wheel_impl,
+)
+
 jax_test_file_visibility = []
