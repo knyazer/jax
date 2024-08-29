@@ -1699,7 +1699,7 @@ string_state(
 
 pmap_no_rank_reduction = bool_state(
     name='jax_pmap_no_rank_reduction',
-    default=False,
+    default=True,
     help=(
         "If True, pmap shards have a the same rank as their enclosing array."
     )
