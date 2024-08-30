@@ -156,7 +156,7 @@ class Jax2TfLimitation(test_harnesses.Limitation):
       "reduce_window_max", "real", "reshape", "rev", "rsqrt", "select_n",
       "select_and_scatter_add", "shift_left", "shift_right_logical",
       "shift_right_arithmetic", "sign", "sin", "sinh", "slice", "sqrt",
-      "squeeze", "stop_gradient", "sub", "tie_in", "transpose", "xor",
+      "squeeze", "stop_gradient", "sub", "tan", "tie_in", "transpose", "xor",
       "zeros_like"
   }
 
@@ -1431,14 +1431,6 @@ class Jax2TfLimitation(test_harnesses.Limitation):
             devices=("tpu"),
             modes=("eager", "graph", "compiled"),
             enabled=(compute_uv == True)),
-    ]
-
-  @classmethod
-  def tan(cls, harness):
-    return [
-        custom_numeric(dtypes=[np.complex64], devices="tpu", tol=1e-4),
-        custom_numeric(dtypes=[np.complex64], devices=("cpu", "gpu"), tol=1e-3),
-        custom_numeric(dtypes=[np.complex128], devices=("cpu", "gpu"), tol=1e-12)
     ]
 
   @classmethod
