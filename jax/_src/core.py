@@ -1735,20 +1735,17 @@ def _invalid_shape_error(shape: Shape, context: str=""):
 class ShapedArray(UnshapedArray):
   __slots__ = ['shape', 'sharding']  # inherits slots from parent
   array_abstraction_level = 2
-  named_shape = {}  # type: ignore
 
-  def __init__(self, shape, dtype, weak_type=False, named_shape=None,
-               sharding=None):
-    del named_shape  # unused, vestigial
+  def __init__(self, shape, dtype, weak_type=False, sharding=None):
     self.shape = canonicalize_shape(shape)
     self.dtype = _dtype_object(dtype)
     self.weak_type = weak_type
     if config.sharding_in_types.value:
       self.sharding = sharding
+    else:
+      self.sharding = None
 
-  def update(self, shape=None, dtype=None, weak_type=None, named_shape=None,
-             sharding=None):
-    del named_shape  # unused, vestigial
+  def update(self, shape=None, dtype=None, weak_type=None, sharding=None):
     if shape is None:
       shape = self.shape
     if dtype is None:
@@ -1756,7 +1753,7 @@ class ShapedArray(UnshapedArray):
     if weak_type is None:
       weak_type = self.weak_type
     if sharding is None:
-      sharding = getattr(self, 'sharding', None)
+      sharding = self.sharding
     return ShapedArray(shape, dtype, weak_type, sharding=sharding)
 
   ndim = property(lambda self: len(self.shape))
@@ -1773,14 +1770,13 @@ class ShapedArray(UnshapedArray):
     return (type(self) is type(other)
             and self.dtype == other.dtype and self.shape == other.shape
             and self.weak_type == other.weak_type
-            and getattr(self, 'sharding', None) == getattr(other, 'sharding', None))
+            and self.sharding == other.sharding)
 
   def __hash__(self):
     # can use hash(self.dtype) and rely on the fact that numpy reuses base dtype
     # objects, e.g. `np.zeros(3).dtype is np.zeros(4).dtype`, or we can use
     # the unique character code via hash(self.dtype.char)
-    return hash((self.shape, self.dtype, self.weak_type,
-                 getattr(self, 'sharding', None)))
+    return hash((self.shape, self.dtype, self.weak_type, self.sharding))
 
   def at_least_vspace(self):
     return ShapedArray(self.shape, primal_dtype_to_tangent_dtype(self.dtype),
@@ -1799,10 +1795,10 @@ class ShapedArray(UnshapedArray):
     dt_str =  _short_dtype_name(self.dtype) if short_dtypes else self.dtype.name
     dt_str = dt_str.replace('void', 'float0')
     shapestr = ','.join(map(str, self.shape))
-    if hasattr(self, 'sharding'):
-      return f'{dt_str}[{shapestr}]({self.sharding})'
-    else:
+    if self.sharding is None:
       return f'{dt_str}[{shapestr}]'
+    else:
+      return f'{dt_str}[{shapestr}]({self.sharding})'
 
   def _len(self, ignored_tracer):
     try:
